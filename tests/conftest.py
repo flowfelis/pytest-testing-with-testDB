@@ -1,52 +1,27 @@
-import os
-
 import pytest
+from sqlmodel import SQLModel
 from sqlmodel import Session
-from sqlalchemy.sql import text
+from sqlmodel import create_engine
 from starlette.testclient import TestClient
+from sqlmodel.pool import StaticPool
 
-from app.db import engine
+from app.db import get_session
 from app.main import app
 
 
-@pytest.fixture(scope="module")
-def test_app():
-    client = TestClient(app)
-    yield client
-
-
-@pytest.fixture(scope="session")
-def test_engine():
-    """
-    This is needed to make sure connecting to the TEST DB,
-    and not to the DEV DB.
-
-    scope="session" means that it will be run while starting all tests,
-    and will not run again
-    """
-    os.environ['Database'] = 'mytest_test'
-    return engine()
-
-
-@pytest.fixture(scope="function", autouse=True)
-def test_session(test_engine):
-    """
-    Beginning of every test:
-        1) populate TEST DB with data
-    After every test:
-        2) delete all data from TEST DB
-    """
-    with Session(test_engine) as session:
-        # Insert some boilerplate data
-        with open('insert_data.sql') as f:
-            statement = text(f.read())
-            session.execute(statement)
-            session.commit()
-
+@pytest.fixture(name="session")
+def session_fixture():
+    engine = create_engine(
+        "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
+    SQLModel.metadata.create_all(engine)
+    with Session(engine) as session:
         yield session
 
-        # Remove all data
-        with open('truncate_data.sql') as f:
-            statement = text(f.read())
-            session.execute(statement)
-            session.commit()
+
+@pytest.fixture(name="client")
+def client_fixture(session: Session):
+    app.dependency_overrides[get_session] = lambda: session
+    client = TestClient(app)
+    yield client
+    app.dependency_overrides.clear()

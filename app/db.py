@@ -1,8 +1,10 @@
 import os
+
+from sqlmodel import Session
 from sqlmodel import create_engine
 
 
-def engine():
+def get_session():
     postgres_db_uri = (
         'postgresql+psycopg2://'
         f'{os.environ["Username"]}:'
@@ -12,4 +14,6 @@ def engine():
         f'{os.environ["Database"]}'
     )
 
-    return create_engine(postgres_db_uri)
+    engine = create_engine(postgres_db_uri)
+    with Session(engine) as session:
+        yield session
